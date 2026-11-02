@@ -7,22 +7,16 @@ import {
   Dimensions,
   ScrollView,
   Alert,
+  Pressable,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import { Gesture, GestureDetector } from 'react-native-gesture-handler';
-import Animated, {
-  useSharedValue,
-  useAnimatedStyle,
-  withSpring,
-  runOnJS,
-} from 'react-native-reanimated';
 import { colors, spacing, radius } from '../constants/theme';
 import { furniture, roomTemplates, FurnitureItem } from '../data/furniture';
 
 const { width: SCREEN_W } = Dimensions.get('window');
 const CANVAS_SIZE = SCREEN_W - spacing.md * 2;
-const SCALE = CANVAS_SIZE / 500; // 500cm room base
+const SCALE = CANVAS_SIZE / 500;
 
 type PlacedItem = {
   id: string;
@@ -31,73 +25,6 @@ type PlacedItem = {
   y: number;
   rotation: number;
 };
-
-function DraggableItem({
-  placed,
-  onUpdate,
-  onSelect,
-  selected,
-}: {
-  placed: PlacedItem;
-  onUpdate: (id: string, x: number, y: number) => void;
-  onSelect: (id: string) => void;
-  selected: boolean;
-}) {
-  const translateX = useSharedValue(placed.x);
-  const translateY = useSharedValue(placed.y);
-  const startX = useSharedValue(0);
-  const startY = useSharedValue(0);
-
-  const pan = Gesture.Pan()
-    .onStart(() => {
-      startX.value = translateX.value;
-      startY.value = translateY.value;
-      runOnJS(onSelect)(placed.id);
-    })
-    .onUpdate((e) => {
-      translateX.value = startX.value + e.translationX;
-      translateY.value = startY.value + e.translationY;
-    })
-    .onEnd(() => {
-      // clamp inside canvas
-      const maxX = CANVAS_SIZE - placed.item.width * SCALE;
-      const maxY = CANVAS_SIZE - placed.item.depth * SCALE;
-      translateX.value = withSpring(Math.max(0, Math.min(maxX, translateX.value)));
-      translateY.value = withSpring(Math.max(0, Math.min(maxY, translateY.value)));
-      runOnJS(onUpdate)(placed.id, translateX.value, translateY.value);
-    });
-
-  const style = useAnimatedStyle(() => ({
-    transform: [
-      { translateX: translateX.value },
-      { translateY: translateY.value },
-      { rotate: `${placed.rotation}deg` },
-    ],
-  }));
-
-  const w = placed.item.width * SCALE;
-  const h = placed.item.depth * SCALE;
-
-  return (
-    <GestureDetector gesture={pan}>
-      <Animated.View
-        style={[
-          styles.furniture,
-          {
-            width: w,
-            height: h,
-            backgroundColor: placed.item.color + 'CC',
-            borderColor: selected ? colors.secondary : 'transparent',
-            borderWidth: selected ? 3 : 0,
-          },
-          style,
-        ]}
-      >
-        <Text style={styles.furnitureEmoji}>{placed.item.emoji}</Text>
-      </Animated.View>
-    </GestureDetector>
-  );
-}
 
 export default function PlannerScreen({ route }: any) {
   const roomId = route?.params?.roomId || 'living';
@@ -111,19 +38,13 @@ export default function PlannerScreen({ route }: any) {
     const newItem: PlacedItem = {
       id: `${item.id}-${Date.now()}`,
       item,
-      x: 40 + Math.random() * 60,
-      y: 40 + Math.random() * 60,
+      x: 40 + Math.random() * 80,
+      y: 40 + Math.random() * 80,
       rotation: 0,
     };
     setPlaced((prev) => [...prev, newItem]);
     setSelectedId(newItem.id);
     setShowCatalog(false);
-  }, []);
-
-  const updatePos = useCallback((id: string, x: number, y: number) => {
-    setPlaced((prev) =>
-      prev.map((p) => (p.id === id ? { ...p, x, y } : p))
-    );
   }, []);
 
   const removeSelected = () => {
@@ -141,9 +62,24 @@ export default function PlannerScreen({ route }: any) {
     );
   };
 
+  const moveSelected = (dx: number, dy: number) => {
+    if (!selectedId) return;
+    setPlaced((prev) =>
+      prev.map((p) => {
+        if (p.id !== selectedId) return p;
+        const maxX = CANVAS_SIZE - p.item.width * SCALE;
+        const maxY = CANVAS_SIZE - p.item.depth * SCALE;
+        return {
+          ...p,
+          x: Math.max(0, Math.min(maxX, p.x + dx)),
+          y: Math.max(0, Math.min(maxY, p.y + dy)),
+        };
+      })
+    );
+  };
+
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
-      {/* Header */}
       <View style={styles.header}>
         <View>
           <Text style={styles.title}>{room.emoji} {room.name}</Text>
@@ -157,36 +93,64 @@ export default function PlannerScreen({ route }: any) {
         </TouchableOpacity>
       </View>
 
-      {/* Canvas */}
       <View style={styles.canvasWrap}>
         <View style={[styles.canvas, { width: CANVAS_SIZE, height: CANVAS_SIZE }]}>
-          {/* grid */}
           {[...Array(5)].map((_, i) => (
-            <View
-              key={`h${i}`}
-              style={[styles.gridLineH, { top: (CANVAS_SIZE / 5) * i }]}
-            />
+            <View key={`h${i}`} style={[styles.gridLineH, { top: (CANVAS_SIZE / 5) * i }]} />
           ))}
           {[...Array(5)].map((_, i) => (
-            <View
-              key={`v${i}`}
-              style={[styles.gridLineV, { left: (CANVAS_SIZE / 5) * i }]}
-            />
+            <View key={`v${i}`} style={[styles.gridLineV, { left: (CANVAS_SIZE / 5) * i }]} />
           ))}
 
-          {placed.map((p) => (
-            <DraggableItem
-              key={p.id}
-              placed={p}
-              onUpdate={updatePos}
-              onSelect={setSelectedId}
-              selected={selectedId === p.id}
-            />
-          ))}
+          {placed.map((p) => {
+            const w = p.item.width * SCALE;
+            const h = p.item.depth * SCALE;
+            const selected = selectedId === p.id;
+            return (
+              <Pressable
+                key={p.id}
+                onPress={() => setSelectedId(p.id)}
+                style={[
+                  styles.furniture,
+                  {
+                    width: w,
+                    height: h,
+                    left: p.x,
+                    top: p.y,
+                    backgroundColor: p.item.color + 'CC',
+                    borderColor: selected ? colors.secondary : 'transparent',
+                    borderWidth: selected ? 3 : 0,
+                    transform: [{ rotate: `${p.rotation}deg` }],
+                  },
+                ]}
+              >
+                <Text style={styles.furnitureEmoji}>{p.item.emoji}</Text>
+              </Pressable>
+            );
+          })}
         </View>
       </View>
 
-      {/* Tools */}
+      {/* Move controls */}
+      {selectedId && (
+        <View style={styles.movePad}>
+          <TouchableOpacity style={styles.moveBtn} onPress={() => moveSelected(0, -20)}>
+            <Ionicons name="chevron-up" size={24} color={colors.primary} />
+          </TouchableOpacity>
+          <View style={styles.moveRow}>
+            <TouchableOpacity style={styles.moveBtn} onPress={() => moveSelected(-20, 0)}>
+              <Ionicons name="chevron-back" size={24} color={colors.primary} />
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.moveBtn} onPress={() => moveSelected(20, 0)}>
+              <Ionicons name="chevron-forward" size={24} color={colors.primary} />
+            </TouchableOpacity>
+          </View>
+          <TouchableOpacity style={styles.moveBtn} onPress={() => moveSelected(0, 20)}>
+            <Ionicons name="chevron-down" size={24} color={colors.primary} />
+          </TouchableOpacity>
+        </View>
+      )}
+
       <View style={styles.tools}>
         <TouchableOpacity
           style={[styles.toolBtn, !selectedId && styles.toolDisabled]}
@@ -213,7 +177,6 @@ export default function PlannerScreen({ route }: any) {
         </TouchableOpacity>
       </View>
 
-      {/* Mini catalog */}
       {showCatalog && (
         <View style={styles.miniCatalog}>
           <Text style={styles.miniTitle}>Выбери мебель</Text>
@@ -237,10 +200,7 @@ export default function PlannerScreen({ route }: any) {
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: colors.background,
-  },
+  container: { flex: 1, backgroundColor: colors.background },
   header: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -248,15 +208,8 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.sm,
   },
-  title: {
-    fontSize: 20,
-    fontWeight: '700',
-    color: colors.text,
-  },
-  sub: {
-    fontSize: 13,
-    color: colors.textSecondary,
-  },
+  title: { fontSize: 20, fontWeight: '700', color: colors.text },
+  sub: { fontSize: 13, color: colors.textSecondary },
   saveBtn: {
     width: 44,
     height: 44,
@@ -265,10 +218,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  canvasWrap: {
-    alignItems: 'center',
-    marginVertical: spacing.sm,
-  },
+  canvasWrap: { alignItems: 'center', marginVertical: spacing.sm },
   canvas: {
     backgroundColor: colors.roomBg,
     borderRadius: radius.md,
@@ -298,8 +248,24 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     elevation: 3,
   },
-  furnitureEmoji: {
-    fontSize: 20,
+  furnitureEmoji: { fontSize: 20 },
+  movePad: {
+    alignItems: 'center',
+    marginBottom: spacing.sm,
+  },
+  moveRow: {
+    flexDirection: 'row',
+    gap: spacing.lg,
+  },
+  moveBtn: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: colors.surface,
+    alignItems: 'center',
+    justifyContent: 'center',
+    elevation: 2,
+    margin: 4,
   },
   tools: {
     flexDirection: 'row',
@@ -316,9 +282,7 @@ const styles = StyleSheet.create({
     padding: spacing.sm,
     minWidth: 70,
   },
-  toolDisabled: {
-    opacity: 0.5,
-  },
+  toolDisabled: { opacity: 0.5 },
   addTool: {
     backgroundColor: colors.primary,
     borderRadius: radius.md,
@@ -351,9 +315,7 @@ const styles = StyleSheet.create({
     borderRadius: radius.md,
     padding: spacing.sm,
   },
-  miniEmoji: {
-    fontSize: 28,
-  },
+  miniEmoji: { fontSize: 28 },
   miniName: {
     fontSize: 11,
     color: colors.text,
