@@ -2,10 +2,9 @@ import React from 'react';
 import { StatusBar } from 'expo-status-bar';
 import { NavigationContainer } from '@react-navigation/native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
-import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { Ionicons } from '@expo/vector-icons';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
-import { GestureHandlerRootView } from 'react-native-gesture-handler';
+import { View } from 'react-native';
 
 import HomeScreen from './src/screens/HomeScreen';
 import CatalogScreen from './src/screens/CatalogScreen';
@@ -15,7 +14,6 @@ import ProfileScreen from './src/screens/ProfileScreen';
 import { colors } from './src/constants/theme';
 
 const Tab = createBottomTabNavigator();
-const Stack = createNativeStackNavigator();
 
 function MainTabs() {
   return (
@@ -62,13 +60,13 @@ function MainTabs() {
 
 export default function App() {
   return (
-    <GestureHandlerRootView style={{ flex: 1 }}>
-      <SafeAreaProvider>
+    <SafeAreaProvider>
+      <View style={{ flex: 1 }}>
         <NavigationContainer>
           <StatusBar style="dark" />
           <MainTabs />
         </NavigationContainer>
-      </SafeAreaProvider>
-    </GestureHandlerRootView>
+      </View>
+    </SafeAreaProvider>
   );
 }
